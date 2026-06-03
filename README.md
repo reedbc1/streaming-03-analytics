@@ -172,7 +172,7 @@ bin/kafka-topics.sh --create \
   --bootstrap-server localhost:9092 \
   --partitions 1 \
   --replication-factor 1 \
-  --topic streaming-03-analytics-case
+  --topic streaming-03-analytics-reed
 ```
 
 ### In VS Code Terminal 3: Run Project and Producer (producer)

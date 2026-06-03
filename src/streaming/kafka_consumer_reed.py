@@ -31,6 +31,9 @@ from pathlib import Path
 from typing import Any, Final
 
 from confluent_kafka.cimpl import OFFSET_BEGINNING, TopicPartition
+from datafun_streaming.data_validation.validation_utils import (
+    validate_required_fields,
+)
 from datafun_streaming.io.io_utils import append_csv_row, read_csv_as_lookup
 from datafun_streaming.kafka.kafka_admin_utils import (
     create_admin_client,
@@ -49,10 +52,9 @@ from dotenv import load_dotenv
 
 from streaming.core.utils import log_env_vars
 from streaming.data_engineering.derived_fields import enrich_message
-from streaming.data_validation.data_contract_case import (
+from streaming.data_validation.data_contract_reed import (
     CONSUMED_FIELDNAMES,
     SALES_REQUIRED_FIELDS,
-    validate_required_fields,
 )
 
 # === CONFIGURE LOGGER ===
@@ -219,11 +221,11 @@ def initialize_output() -> RunningStats:
     return RunningStats()
 
 
-def load_reference_data() -> dict[str, float]:
+def load_reference_data() -> tuple[dict[str, float], dict[str, float]]:
     """Load reference data used for message enrichment.
 
     Returns:
-        A dictionary mapping region_id to tax rate as a float.
+        Dictionaries for region tax rates and currency exchange rates.
     """
     LOG.info("Loading enrichment reference data...")
     region_lookup: dict[str, float] = {
@@ -235,13 +237,41 @@ def load_reference_data() -> dict[str, float]:
         ).items()
     }
     LOG.info(f"Found {len(region_lookup)} region tax rates.")
-    return region_lookup
+
+    currency_lookup: dict[str, float] = {
+        currency_code: float(exchange_rate)
+        for currency_code, exchange_rate in read_csv_as_lookup(
+            CURRENCIES_CSV,
+            key_field="currency_code",
+            value_field="exchange_rate_to_usd",
+        ).items()
+    }
+    LOG.info(f"Found {len(currency_lookup)} currency exchange rates.")
+    return region_lookup, currency_lookup
+
+
+def compute_currency_subtotal(
+    *,
+    currency_code: str,
+    unit_price: float,
+    currency_lookup: dict[str, float],
+) -> float:
+    """Compute unit price converted with the currency exchange rate."""
+    exchange_rate = currency_lookup.get(currency_code)
+    if exchange_rate is None:
+        LOG.warning(
+            f"Currency {currency_code!r} not in lookup table. Using exchange rate 1.0."
+        )
+        exchange_rate = 1.0
+
+    return round(unit_price / exchange_rate, 2)
 
 
 def process_message(
     row: dict[str, Any],
     *,
     region_lookup: dict[str, float],
+    currency_lookup: dict[str, float],
     stats: RunningStats,
 ) -> dict[str, Any] | None:
     """Process one consumed message.
@@ -271,7 +301,13 @@ def process_message(
 
     # Then, enrich the message with derived fields.
     enriched = enrich_message(row, region_lookup)
+    enriched["currency_subtotal"] = compute_currency_subtotal(
+        currency_code=str(enriched.get("currency_code", "")),
+        unit_price=float(enriched.get("unit_price", 0.0)),
+        currency_lookup=currency_lookup,
+    )
     LOG.info(f"subtotal={enriched['subtotal']}")
+    LOG.info(f"currency_subtotal={enriched['currency_subtotal']}")
     LOG.info(f"tax={enriched['tax_amount']}")
     LOG.info(f"total={enriched['total']}")
     LOG.info(f"running_total={stats.total + enriched['total']:.2f}")
@@ -285,6 +321,7 @@ def consume_messages(
     consumer: Any,
     *,
     region_lookup: dict[str, float],
+    currency_lookup: dict[str, float],
     stats: RunningStats,
 ) -> tuple[int, int]:
     """Consume and process messages from the Kafka topic.
@@ -325,6 +362,7 @@ def consume_messages(
         enriched = process_message(
             row,
             region_lookup=region_lookup,
+            currency_lookup=currency_lookup,
             stats=stats,
         )
 
@@ -412,7 +450,7 @@ def main() -> None:
     LOG.info("========================")
 
     stats = initialize_output()
-    region_lookup = load_reference_data()
+    region_lookup, currency_lookup = load_reference_data()
 
     consumed_count = 0
     skipped_count = 0
@@ -421,6 +459,7 @@ def main() -> None:
         consumed_count, skipped_count = consume_messages(
             consumer,
             region_lookup=region_lookup,
+            currency_lookup=currency_lookup,
             stats=stats,
         )
     finally:
