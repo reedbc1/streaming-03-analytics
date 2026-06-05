@@ -24,7 +24,7 @@ to get these projects running on your machine.
 ### Dataset
 
 - The dataset is data\sales.csv.
-- It contains transactions of textbooks from an online commerce website.
+- It contains online course or educational product transactions from an online commerce website.
 - Fields included in each record are order_id, datetime, region_id, currency_code,product_id, unit_price, quantity, is_online,customer_id, is_new_customer, device_type,payment_method, referral_source, discount_code, and customer_note.
 - I used the original sales dataset for this project.
 - The regions.csv and currencies.csv datasets are used for enrichment.
@@ -34,7 +34,7 @@ to get these projects running on your machine.
 The data contract is defined in data_contract_reed.py.
 Required fields are defined in the variable SALES_REQUIRED_FIELDS.
 
-SALES_REQUIRED_FIELDS: Final[list[str]] = [
+`SALES_REQUIRED_FIELDS: Final[list[str]] = [
     "order_id",
     "datetime",
     "region_id",
@@ -45,7 +45,7 @@ SALES_REQUIRED_FIELDS: Final[list[str]] = [
     "is_online",
     "customer_id",
     "payment_method",
-]
+]`
 
 A message not containing one or more of these fields is not valid and will be rejected.
 In the future, the function validate_sale_record in data_contract_case.py can be used
@@ -67,10 +67,10 @@ When a message is rejected, it is logged and the consumer begins processing the 
 
 ### Data Engineering and Enrichment
 
-In sales.csv, the subtotal is shown, but the transaction sometimes involves currency other than USD. Subtotals for projects are all in USD. I created the currency_subtotal
+In sales.csv, the unit price is shown, but the transaction sometimes involves currency other than USD. Unit prices are in USD by default. I created the currency_subtotal
 field that uses the currencies.csv reference data to find the exchange rate for the
 currency used in the transaction. The calculated field is
-`currency_subtotal = subtotal / exchange_rate_to_usd`
+`currency_subtotal = unit_price / exchange_rate_to_usd`
 This finds how much of the currency was spent on the transaction.
 
 ### Streaming Analytics
@@ -81,7 +81,7 @@ The following running statistics were tracked:
 - min: the smallest transaction total so far
 - max: the largest transaction total so far
 
-Streaming statistics are updated as messages as consumed.
+Streaming statistics are updated as messages are consumed.
 - total_sales adds the new totals
 - average incorporates the new totals into the calculation
 - if the new total is smaller than the min, it becomes the new min
@@ -95,8 +95,7 @@ continued to run correctly. I changed the following variables.
 - **KAFKA_TOPIC**: Changed to streaming-03-analytics-reed to customize the project.
 - **PRODUCER_MESSAGE_COUNT**: Changed from 3 to 10 to increase the number of messages
   produced and consumed.
-- **PRODUCER_MESSAGE_INTERVAL_SECONDS**: Decreased from 2 to 1 to increased to speed in
-  which messages are produced.
+- **PRODUCER_MESSAGE_INTERVAL_SECONDS**: Decreased from 2 to 1 second to increase the speed at which messages are produced.
 
 ### Results
 
