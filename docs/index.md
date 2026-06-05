@@ -67,48 +67,46 @@ When a message is rejected, it is logged and the consumer begins processing the 
 
 ### Data Engineering and Enrichment
 
-Describe what your consumer computes or adds.
-
-Include:
-- which derived fields are created
-- what reference data is used
-- how raw fields are transformed into more useful fields
-- whether you changed or added any calculations (be specific)
+In sales.csv, the subtotal is shown, but the transaction sometimes involves currency other than USD. Subtotals for projects are all in USD. I created the currency_subtotal
+field that uses the currencies.csv reference data to find the exchange rate for the
+currency used in the transaction. The calculated field is
+`currency_subtotal = subtotal / exchange_rate_to_usd`
+This finds how much of the currency was spent on the transaction.
 
 ### Streaming Analytics
 
-Describe the running summaries created as messages arrive.
+The following running statistics were tracked:
+- total_sales: the sum of streamed transaction totals
+- average: the mean of streamed transaction totals
+- min: the smallest transaction total so far
+- max: the largest transaction total so far
 
-Include:
-- what values are summarized
-- whether you tracked totals, averages, minimums, or maximums
-- how the running statistics changed as messages were consumed
+Streaming statistics are updated as messages as consumed.
+- total_sales adds the new totals
+- average incorporates the new totals into the calculation
+- if the new total is smaller than the min, it becomes the new min
+- if the new total is larger than the max, it becomes the new max
 
 ### Experiments
 
-Describe the small technical changes you made.
-
-Include at least one Phase 4 change and one Phase 5 application.
+#### Phase 4 Change: Modifying Environment Variables
+I modified variables in the local .env file and observed results to ensure the system
+continued to run correctly. I changed the following variables.
+- **KAFKA_TOPIC**: Changed to streaming-03-analytics-reed to customize the project.
+- **PRODUCER_MESSAGE_COUNT**: Changed from 3 to 10 to increase the number of messages
+  produced and consumed.
+- **PRODUCER_MESSAGE_INTERVAL_SECONDS**: Decreased from 2 to 1 to increased to speed in
+  which messages are produced.
 
 ### Results
 
-Describe what happened when you ran the producer and consumer.
-
-Include:
-- whether messages were produced successfully
-- whether messages were consumed successfully
-- how many messages were accepted
-- how many messages were rejected or skipped
-- what appeared in the output CSV file
-- what appeared in the logs
+- Messages were produced at 1 second intervals. 10 messages were consumed successfully and no messages were rejected or skipped.
+- The output csv file data\output\consumed_sales.csv contained the following fields:
+  `order_id, datetime, region_id, currency_code, product_id, unit_price, quantity,is_online, customer_id, payment_method, subtotal, currency_subtotal, tax_amount, total, _kafka_key, _kafka_partition, _kafka_offset`
+- Producer logs indicated that all 10 messages were sent successfully.
+- Consumer logs showed environment variables and then showed streaming analytics for each consumed message. Final streaming analytics were shown before the log confirmed that the consumer had been executed successfully.
 
 ### Interpretation
 
-Explain what the validation and analytics workflow showed you.
-
-Include:
-- what changed from the original example
-- what you learned about validating streaming messages
-- what you learned about enriching messages as they arrive
-- what the running summaries could tell a business or organization
-- what business intelligence was gained from the validated and processed messages
+Phase 4 modifications increased the number of streamed messages and decreased time between message production, cutting down on latency. Phase 5 modifications enriched arriving messages by adding the subtotal paid by the customer in the currency that they used. A company might be interested in how much revenue they are making from different currencies. Unless the company's ecommerce platform already deals with currency conversions, the company may need this information to help with converting currency.
+Additionally, streaming analytics such as total_sales, average, min, and max can tell a company valuable information that give a picture of sales in real-time.
